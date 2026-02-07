@@ -40,9 +40,10 @@ FunctionEnd
   ${if} ${isUpdated}
     Call un.RemoveInstallDirContentsExceptPortableData
   ${else}
-    ; keep default full cleanup for explicit uninstall
-    SetOutPath $TEMP
-    RMDir /r $INSTDIR
+    ; explicit uninstall should also preserve portable data
+    Call un.RemoveInstallDirContentsExceptPortableData
+    ; remove install dir only when nothing (including portable data) remains
+    RMDir "$INSTDIR"
   ${endif}
 !macroend
 !endif
