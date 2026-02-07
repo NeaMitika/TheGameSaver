@@ -306,7 +306,10 @@ export async function restoreSnapshot(db: AppDb, settings: Settings, snapshotId:
     throw new Error('Snapshot manifest is missing or invalid.');
   }
 
-  await backupGame(db, settings, gameId, 'pre-restore', { skipRetention: true });
+  const safetySnapshot = await backupGame(db, settings, gameId, 'pre-restore', { skipRetention: true });
+  if (!safetySnapshot) {
+    throw new Error('Restore blocked: failed to create safety backup before restore.');
+  }
 
   for (const file of files) {
     const location = locationMap.get(file.location_id);
@@ -334,10 +337,10 @@ export async function deleteSnapshot(db: AppDb, snapshotId: string, options: { l
     return;
   }
 
+  await removeDirSafe(snapshot.storage_path);
   db.state.snapshots = db.state.snapshots.filter((item) => item.id !== snapshotId);
   db.state.snapshotFiles = db.state.snapshotFiles.filter((item) => item.snapshot_id !== snapshotId);
   persistDb(db);
-  await removeDirSafe(snapshot.storage_path);
 
   if (options.log !== false) {
     logEvent(db, snapshot.game_id, 'backup', 'Snapshot deleted.');

@@ -37,7 +37,7 @@ vi.mock('../src/main/services/gameService', () => ({
   )
 }));
 
-import { backupGame } from '../src/main/services/backupService';
+import { backupGame, deleteSnapshot, restoreSnapshot } from '../src/main/services/backupService';
 import { logEvent } from '../src/main/services/eventLogService';
 import { removeDirSafe, walkFiles } from '../src/main/services/fileOps';
 import { updateGameStatus } from '../src/main/services/gameService';
@@ -266,5 +266,87 @@ describe('backupService', () => {
     await expect(verifySnapshot(db, 'snap-1')).rejects.toThrow(
       'Snapshot file path resolves outside its allowed root.'
     );
+  });
+
+  it('blocks restore when pre-restore safety snapshot cannot be created', async () => {
+    const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gamesaver-restore-safety-block-'));
+    tempRoots.push(snapshotRoot);
+    fs.writeFileSync(
+      path.join(snapshotRoot, 'snapshot.manifest.json'),
+      JSON.stringify(
+        {
+          version: 2,
+          snapshot_id: 'snap-1',
+          created_at: new Date().toISOString(),
+          reason: 'manual',
+          locations: {}
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    );
+    vi.mocked(listSaveLocations).mockReturnValue([]);
+
+    const db = createMemoryDb({
+      games: [
+        {
+          id: 'game-1',
+          name: 'Game One',
+          install_path: 'C:\\Games\\One',
+          exe_path: 'C:\\Games\\One\\one.exe',
+          created_at: new Date().toISOString(),
+          last_seen_at: null,
+          status: 'protected',
+          folder_name: 'game-1'
+        }
+      ],
+      snapshots: [
+        {
+          id: 'snap-1',
+          game_id: 'game-1',
+          created_at: new Date().toISOString(),
+          size_bytes: 0,
+          checksum: 'snapshot-checksum',
+          storage_path: snapshotRoot,
+          reason: 'manual'
+        }
+      ]
+    });
+
+    await expect(restoreSnapshot(db, settings, 'snap-1')).rejects.toThrow(
+      'Restore blocked: failed to create safety backup before restore.'
+    );
+  });
+
+  it('keeps snapshot metadata when disk deletion fails', async () => {
+    vi.mocked(removeDirSafe).mockRejectedValueOnce(new Error('locked'));
+    const db = createMemoryDb({
+      snapshots: [
+        {
+          id: 'snap-1',
+          game_id: 'game-1',
+          created_at: new Date().toISOString(),
+          size_bytes: 1,
+          checksum: 'snapshot-checksum',
+          storage_path: 'C:\\Backups\\Game\\Snapshots\\snap-1',
+          reason: 'manual'
+        }
+      ],
+      snapshotFiles: [
+        {
+          id: 'file-1',
+          snapshot_id: 'snap-1',
+          location_id: 'loc-1',
+          relative_path: 'save.sav',
+          size_bytes: 1,
+          checksum: 'file-checksum'
+        }
+      ]
+    });
+
+    await expect(deleteSnapshot(db, 'snap-1')).rejects.toThrow('locked');
+    expect(db.state.snapshots).toHaveLength(1);
+    expect(db.state.snapshotFiles).toHaveLength(1);
   });
 });

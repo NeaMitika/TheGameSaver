@@ -115,11 +115,12 @@ async function moveDirectory(source: string, destination: string): Promise<void>
     // fall back to copy across devices
   }
 
+  await fs.promises.mkdir(destination, { recursive: true });
   try {
-    await fs.promises.mkdir(destination, { recursive: true });
     await fs.promises.cp(source, destination, { recursive: true });
     await fs.promises.rm(source, { recursive: true, force: true });
-  } catch {
-    await fs.promises.mkdir(destination, { recursive: true });
+  } catch (error: unknown) {
+    const details = error instanceof Error && error.message ? ` ${error.message}` : '';
+    throw new Error(`Failed to migrate storage root to "${destination}".${details}`);
   }
 }
