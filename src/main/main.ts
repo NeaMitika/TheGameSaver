@@ -164,6 +164,10 @@ function showMainWindow(): void {
 }
 
 function hideMainWindowToTray(): void {
+	if (!tray) {
+		quitApp();
+		return;
+	}
 	mainWindow?.hide();
 	updateTrayMenu();
 }
@@ -201,7 +205,13 @@ function updateTrayMenu(): void {
 
 function createTray(): void {
 	if (tray) return;
-	tray = new Tray(resolveTrayIcon());
+	try {
+		tray = new Tray(resolveTrayIcon());
+	} catch (error) {
+		console.error(`[tray] Failed to initialize tray icon: ${getErrorMessage(error, 'Unknown tray error')}`);
+		tray = null;
+		return;
+	}
 	tray.setToolTip('GameSaver');
 	tray.on('click', () => {
 		if (mainWindow?.isVisible()) {
@@ -324,6 +334,10 @@ function createWindow(): void {
 
 	mainWindow.on('close', (event) => {
 		if (isQuitting) {
+			return;
+		}
+		if (!tray) {
+			quitApp();
 			return;
 		}
 		event.preventDefault();
@@ -647,7 +661,11 @@ function registerIpc(): void {
 	});
 
 	ipcMain.handle('window:close', () => {
-		hideMainWindowToTray();
+		if (tray) {
+			hideMainWindowToTray();
+			return;
+		}
+		mainWindow?.close();
 	});
 
 	ipcMain.handle('window:is-maximized', () => {
