@@ -4,7 +4,8 @@ import { formatBytes, formatDate } from '@renderer/lib/format';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { cn } from '@renderer/lib/utils';
+import { cn, middleEllipsis } from '@renderer/lib/utils';
+import { ArrowLeftIcon } from 'lucide-react';
 
 type GameDetailPanelProps = {
 	detail: GameDetail;
@@ -46,13 +47,25 @@ export default function GameDetailPanel({
 
 	return (
 		<div className='space-y-4'>
+			<div className='w-full flex items-center justify-between'>
+				<h2 className='text-lg font-bold'>Game Details</h2>
+				<Button variant='ghost' onClick={onBack}>
+					<ArrowLeftIcon className=' h-4 w-4' />
+					Back
+				</Button>
+			</div>
 			<Card>
 				<CardHeader className='gap-3'>
 					<div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
 						<div className='space-y-2'>
-							<CardTitle>{detail.game.name}</CardTitle>
-							<CardDescription className='break-all'>{detail.game.install_path}</CardDescription>
-							<Badge variant={isRunning ? 'secondary' : 'outline'}>{isRunning ? 'Running' : 'Idle'}</Badge>
+							<div className='flex items-center gap-2'>
+								<CardTitle>{detail.game.name}</CardTitle>
+								<Badge variant={isRunning ? 'secondary' : 'outline'}>{isRunning ? 'Running' : 'Idle'}</Badge>
+							</div>
+
+							<CardDescription className='break-all line-clamp-1'>
+								{middleEllipsis(detail.game.install_path, 30, 30)}
+							</CardDescription>
 						</div>
 						<div className='flex flex-wrap gap-2'>
 							<Button variant='outline' onClick={handleLaunch} disabled={isRunning}>
@@ -60,9 +73,6 @@ export default function GameDetailPanel({
 							</Button>
 							<Button variant='secondary' onClick={handleBackup}>
 								Backup Now
-							</Button>
-							<Button variant='ghost' onClick={onBack}>
-								Back
 							</Button>
 						</div>
 					</div>
