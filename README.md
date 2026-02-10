@@ -1,5 +1,8 @@
 # GameSaver
 
+<img width="630" height="500" alt="image" src="https://github.com/user-attachments/assets/b5f9ffa6-90e8-46ee-be0b-96a16eccaa64" />
+
+
 GameSaver is a desktop app that protects save files for standalone Windows games (CD installs, DRM-free downloads, portable installs, and other non-launcher setups).
 
 It tracks your games, watches save locations, creates versioned snapshots, and lets you restore or verify backups from a simple Electron UI.
