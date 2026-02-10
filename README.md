@@ -2,6 +2,15 @@
 
 <img width="630" height="500" alt="image" src="https://github.com/user-attachments/assets/b5f9ffa6-90e8-46ee-be0b-96a16eccaa64" />
 
+## Screenshots
+
+<img width="221" height="150" alt="image" src="https://github.com/user-attachments/assets/1a70356c-02bb-41fe-a59c-23473d0c909c" />
+<img width="221" height="150" alt="image" src="https://github.com/user-attachments/assets/7037918f-f517-498b-a9e8-b43842a0d86c" />
+<img width="221" height="158" alt="image" src="https://github.com/user-attachments/assets/2aedb140-4b11-4900-8a39-a901c7a20e06" />
+<img width="221" height="158" alt="image" src="https://github.com/user-attachments/assets/ec8d3839-a555-49d0-b9c4-005d076c648e" />
+<img width="221" height="158" alt="image" src="https://github.com/user-attachments/assets/3a1a9222-d9c5-4967-8666-c5bb1a3c4c7b" />
+<img width="221" height="158" alt="image" src="https://github.com/user-attachments/assets/389709f9-8c19-4d91-ba5f-780e41970006" />
+
 
 GameSaver is a desktop app that protects save files for standalone Windows games (CD installs, DRM-free downloads, portable installs, and other non-launcher setups).
 
