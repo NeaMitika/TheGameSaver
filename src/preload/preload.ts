@@ -3,6 +3,7 @@ import {
   AddGamePayload,
   BackupProgressPayload,
   BackupScanResult,
+  CatalogDetectionProgressPayload,
   Game,
   GameDetail,
   GameSummary,
@@ -55,6 +56,13 @@ const api = {
     };
     ipcRenderer.on('backup:progress', handler);
     return () => ipcRenderer.removeListener('backup:progress', handler);
+  },
+  onCatalogDetectionProgress: (callback: (payload: CatalogDetectionProgressPayload) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: CatalogDetectionProgressPayload) => {
+      callback(payload);
+    };
+    ipcRenderer.on('catalog:detection-progress', handler);
+    return () => ipcRenderer.removeListener('catalog:detection-progress', handler);
   },
   windowControls: {
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),

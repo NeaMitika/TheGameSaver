@@ -169,6 +169,12 @@ tests/         # Vitest coverage for core services
 scripts/       # dev runtime helpers
 ```
 
+## Game Catalog JSON (Auto Save-Path Detection)
+
+- Development path: `data/games-db.json` (project root).
+- Packaged app: bundled as `resources/data/games-db.json` via `electron-builder` `extraResources`.
+- The add-game flow can use this catalog to detect save paths from Windows entries and runtime validation.
+
 ## Known Limitations
 
 - Windows-focused implementation.

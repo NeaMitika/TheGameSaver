@@ -4,6 +4,7 @@ import type {
   AddGamePayload,
   BackupProgressPayload,
   BackupScanResult,
+  CatalogDetectionProgressPayload,
   Game,
   GameDetail,
   GameSummary,
@@ -38,6 +39,7 @@ declare global {
       onGameStatus: (callback: (payload: { gameId: string; isRunning: boolean }) => void) => () => void;
       onBackupCreated: (callback: (payload: SnapshotCreatedPayload) => void) => () => void;
       onBackupProgress: (callback: (payload: BackupProgressPayload) => void) => () => void;
+      onCatalogDetectionProgress: (callback: (payload: CatalogDetectionProgressPayload) => void) => () => void;
       windowControls: {
         minimize: () => Promise<void>;
         toggleMaximize: () => Promise<boolean>;

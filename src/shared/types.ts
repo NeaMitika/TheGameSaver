@@ -106,6 +106,26 @@ export interface SnapshotCreatedPayload {
 }
 
 export type BackupProgressStage = 'started' | 'progress' | 'completed' | 'failed';
+export type CatalogDetectionProgressStage = 'started' | 'progress' | 'completed' | 'failed';
+
+export interface CatalogDetectionTitleMatchScore {
+  title: string;
+  score: number;
+}
+
+export interface CatalogDetectionDebugPayload {
+  exeProductName: string | null;
+  exeFileDescription: string | null;
+  queryStrings: string[];
+  topTitleMatches: CatalogDetectionTitleMatchScore[];
+  windowsLocations: string[];
+  currentLocation: string | null;
+  expandedPaths: string[];
+  checkedPathSamples: string[];
+  selectedCandidatePath: string | null;
+  selectedCandidateScore: number | null;
+  selectedCandidateReasons: string[];
+}
 
 export interface BackupProgressPayload {
   gameId: string;
@@ -119,4 +139,17 @@ export interface BackupProgressPayload {
   snapshotId: string | null;
   createdAt: string | null;
   message: string | null;
+}
+
+export interface CatalogDetectionProgressPayload {
+  gameId: string;
+  gameName: string;
+  stage: CatalogDetectionProgressStage;
+  percent: number;
+  processed: number;
+  total: number;
+  message: string;
+  matchedTitle: string | null;
+  resolvedPath: string | null;
+  debug?: CatalogDetectionDebugPayload | null;
 }

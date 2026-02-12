@@ -1,7 +1,7 @@
 {
 	"name": "gamesaver",
 	"author": "Luciano M.",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"private": true,
 	"description": "Portable USB tool to automatically backup and restore your PC game saves",
 	"main": "dist/main/main.js",
@@ -69,6 +69,10 @@
 			"buildResources": "build"
 		},
 		"extraResources": [
+			{
+				"from": "data",
+				"to": "data"
+			},
 			{
 				"from": "build/icon.ico",
 				"to": "icon.ico"

@@ -3,7 +3,14 @@ import type { MenuItemConstructorOptions, NativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { spawn } from 'child_process';
-import { AddGamePayload, GameSummary, Settings, StartupState } from '../shared/types';
+import {
+	AddGamePayload,
+	CatalogDetectionProgressPayload,
+	Game,
+	GameSummary,
+	Settings,
+	StartupState,
+} from '../shared/types';
 import { loadSettings, saveSettings, updateSettings } from './services/settingsService';
 import { getDb, closeDb } from './services/db';
 import { listGames, addGame, getGameDetail, removeGame, getStoredGameById } from './services/gameService';
@@ -26,6 +33,12 @@ import {
 } from './services/sessionService';
 import { logEvent } from './services/eventLogService';
 import { applyBootstrapUserDataPath, stageDataRootMigration } from './services/dataRootService';
+import {
+	type CatalogSaveDetectionDebugInfo,
+	type CatalogSaveDetectionProgress,
+	type CatalogSavePathCandidate,
+	detectCatalogSavePaths,
+} from './services/catalogSaveDetectionService';
 
 let mainWindow: BrowserWindow | null = null;
 let settings: Settings = {
@@ -66,6 +79,8 @@ const WIDGET_WINDOW_SIZE = {
 };
 
 const DEV_SERVER_ORIGIN = 'http://localhost:5175';
+const CATALOG_LOG_PREFIX = '[Catalog Auto-Detect]';
+const CATALOG_LOG_LIST_LIMIT = 4;
 
 function buildContentSecurityPolicy(isDev: boolean): string {
 	const baseDirectives = [
@@ -492,6 +507,135 @@ function getErrorMessage(error: unknown, fallback: string): string {
 	return fallback;
 }
 
+function getCatalogDatabasePath(): string {
+	const defaultPath = app.isPackaged
+		? path.join(process.resourcesPath, 'data', 'games-db.json')
+		: path.join(process.cwd(), 'data', 'games-db.json');
+	const candidates = app.isPackaged
+		? [defaultPath]
+		: [
+				defaultPath,
+				path.join(process.cwd(), 'games-db', 'games-db.json'),
+				path.join(process.cwd(), 'games-db.json'),
+			];
+
+	for (const candidate of candidates) {
+		if (fs.existsSync(candidate)) {
+			return candidate;
+		}
+	}
+	return defaultPath;
+}
+
+function emitCatalogDetectionProgress(payload: CatalogDetectionProgressPayload): void {
+	if (!mainWindow) {
+		return;
+	}
+	mainWindow.webContents.send('catalog:detection-progress', payload);
+}
+
+function formatCatalogLogList(values: string[], limit = CATALOG_LOG_LIST_LIMIT): string {
+	if (values.length === 0) {
+		return 'none';
+	}
+	const shown = values.slice(0, limit);
+	const hiddenCount = values.length > limit ? ` (+${values.length - limit} more)` : '';
+	return `${shown.join(' | ')}${hiddenCount}`;
+}
+
+function formatCatalogScore(score: number): string {
+	return `${Math.round(score * 100)}%`;
+}
+
+function formatCatalogCandidate(candidate: CatalogSavePathCandidate): string {
+	return `${candidate.path} (${formatCatalogScore(candidate.score)})`;
+}
+
+function buildCatalogProgressSignature(progress: CatalogSaveDetectionProgress): string {
+	return [
+		progress.message,
+		progress.processed,
+		progress.total,
+		progress.matchedTitle ?? '',
+		progress.debug?.currentLocation ?? '',
+	].join('|');
+}
+
+function buildCatalogProgressLogMessage(progress: CatalogSaveDetectionProgress): string {
+	const summary = `${progress.message} (${progress.percent}% ${Math.min(progress.processed, progress.total)}/${progress.total})`;
+	const debug = progress.debug;
+	if (!debug) {
+		return summary;
+	}
+
+	const messageLower = progress.message.toLowerCase();
+	const fragments: string[] = [];
+	if (messageLower.includes('matching game title')) {
+		fragments.push(`exeProduct="${debug.exeProductName ?? 'n/a'}"`);
+		fragments.push(`exeDescription="${debug.exeFileDescription ?? 'n/a'}"`);
+		if (debug.queryStrings.length > 0) {
+			fragments.push(`queries=${formatCatalogLogList(debug.queryStrings)}`);
+		}
+		if (debug.topTitleMatches.length > 0) {
+			const top = debug.topTitleMatches
+				.slice(0, 3)
+				.map((item) => `${item.title} (${formatCatalogScore(item.score)})`)
+				.join(' | ');
+			fragments.push(`topMatches=${top}`);
+		}
+	}
+
+	if (messageLower.includes('resolving windows save locations') && debug.windowsLocations.length > 0) {
+		fragments.push(`windowsRules=${formatCatalogLogList(debug.windowsLocations)}`);
+	}
+
+	if (messageLower.includes('checking location') || messageLower.includes('validated')) {
+		if (debug.currentLocation) {
+			fragments.push(`rule=${debug.currentLocation}`);
+		}
+		if (debug.expandedPaths.length > 0) {
+			fragments.push(`expanded=${formatCatalogLogList(debug.expandedPaths)}`);
+		}
+		if (debug.checkedPathSamples.length > 0) {
+			fragments.push(`checked=${formatCatalogLogList(debug.checkedPathSamples)}`);
+		}
+	}
+
+	if (messageLower.includes('ranking candidate') && debug.selectedCandidatePath) {
+		fragments.push(`bestCandidate=${debug.selectedCandidatePath}`);
+	}
+
+	return fragments.length > 0 ? `${summary} | ${fragments.join(' | ')}` : summary;
+}
+
+function buildCatalogResultLogLines(debug: CatalogSaveDetectionDebugInfo | undefined): string[] {
+	if (!debug) {
+		return [];
+	}
+
+	const lines: string[] = [];
+	if (debug.queryStrings.length > 0) {
+		lines.push(`Search queries: ${formatCatalogLogList(debug.queryStrings)}.`);
+	}
+	if (debug.topTitleMatches.length > 0) {
+		const top = debug.topTitleMatches
+			.slice(0, 3)
+			.map((item) => `${item.title} (${formatCatalogScore(item.score)})`)
+			.join(' | ');
+		lines.push(`Top catalog title matches: ${top}.`);
+	}
+	if (debug.windowsLocations.length > 0) {
+		lines.push(`Windows rules evaluated: ${formatCatalogLogList(debug.windowsLocations)}.`);
+	}
+	if (debug.checkedPathSamples.length > 0) {
+		lines.push(`Path checks: ${formatCatalogLogList(debug.checkedPathSamples)}.`);
+	}
+	if (debug.selectedCandidatePath) {
+		lines.push(`Best candidate: ${debug.selectedCandidatePath} (${formatCatalogScore(debug.selectedCandidateScore ?? 0)}).`);
+	}
+	return lines;
+}
+
 type SaveLocationDialogTarget = 'file' | 'folder';
 
 async function showSaveLocationOpenDialog(target: SaveLocationDialogTarget): Promise<string | null> {
@@ -522,6 +666,228 @@ async function pickSaveLocationPath(): Promise<string | null> {
 	}
 
 	return await showSaveLocationOpenDialog(choice.response === 0 ? 'file' : 'folder');
+}
+
+async function promptForCatalogPathChoice(
+	gameName: string,
+	candidates: Array<{ path: string; score: number }>,
+): Promise<string | null> {
+	const options = candidates.slice(0, 3);
+	if (options.length === 0) {
+		return null;
+	}
+	if (options.length === 1) {
+		return options[0]?.path ?? null;
+	}
+
+	const buttons = options.map((_candidate, index) => `Use ${index + 1}`).concat('Skip');
+	const detail = options
+		.map((candidate, index) => `${index + 1}. ${candidate.path} (${Math.round(candidate.score * 100)}%)`)
+		.join('\n');
+	const messageBoxOptions: Electron.MessageBoxOptions = {
+		type: 'question',
+		title: 'Confirm Save Path',
+		message: `GameSaver found multiple save paths for "${gameName}".`,
+		detail: `${detail}\n\nChoose which location to protect.`,
+		buttons,
+		defaultId: 0,
+		cancelId: buttons.length - 1,
+		noLink: true,
+	};
+	const result = mainWindow
+		? await dialog.showMessageBox(mainWindow, messageBoxOptions)
+		: await dialog.showMessageBox(messageBoxOptions);
+	return result.response >= options.length ? null : (options[result.response]?.path ?? null);
+}
+
+async function applyCatalogDetectionForGame(activeDb: ReturnType<typeof getDb>, game: Game): Promise<void> {
+	const emitProgress = (payload: Omit<CatalogDetectionProgressPayload, 'gameId' | 'gameName'>): void => {
+		emitCatalogDetectionProgress({
+			gameId: game.id,
+			gameName: game.name,
+			...payload,
+		});
+	};
+	const seenProgressSignatures = new Set<string>();
+	const logCatalogStep = (message: string, type: 'backup' | 'error' = 'backup'): void => {
+		logEvent(activeDb, game.id, type, `${CATALOG_LOG_PREFIX} ${message}`);
+	};
+	logCatalogStep(`Started for "${game.name}".`);
+
+	emitProgress({
+		stage: 'started',
+		percent: 0,
+		processed: 0,
+		total: 1,
+		message: 'Starting save-path detection...',
+		matchedTitle: null,
+		resolvedPath: null,
+		debug: null,
+	});
+
+	const detection = await detectCatalogSavePaths({
+		catalogPath: getCatalogDatabasePath(),
+		gameName: game.name,
+		exePath: game.exe_path,
+		installPath: game.install_path,
+		onProgress: (progress) => {
+			emitProgress({
+				stage: 'progress',
+				percent: progress.percent,
+				processed: progress.processed,
+				total: progress.total,
+				message: progress.message,
+				matchedTitle: progress.matchedTitle,
+				resolvedPath: null,
+				debug: progress.debug ?? null,
+			});
+			const signature = buildCatalogProgressSignature(progress);
+			if (seenProgressSignatures.has(signature)) {
+				return;
+			}
+			seenProgressSignatures.add(signature);
+			logCatalogStep(buildCatalogProgressLogMessage(progress));
+		},
+	});
+
+	for (const warning of detection.warnings) {
+		logCatalogStep(`Warning: ${warning}`);
+	}
+
+	if (detection.status !== 'matched') {
+		const message =
+			detection.status === 'catalog-missing'
+				? 'Catalog file not found. Skipping automatic save-path detection.'
+				: detection.status === 'catalog-invalid'
+					? 'Catalog file is invalid. Skipping automatic save-path detection.'
+					: detection.status === 'no-match'
+						? 'No matching title found in catalog.'
+						: detection.status === 'no-windows-locations'
+							? 'Matched title has no Windows save locations.'
+							: 'No valid save paths found on this PC.';
+		logCatalogStep(`Completed without path: ${message}`);
+		for (const line of buildCatalogResultLogLines(detection.debug)) {
+			logCatalogStep(line);
+		}
+		emitProgress({
+			stage: 'completed',
+			percent: 100,
+			processed: 1,
+			total: 1,
+			message,
+			matchedTitle: detection.matchedTitle,
+			resolvedPath: null,
+			debug: detection.debug ?? null,
+		});
+		return;
+	}
+
+	const candidates = detection.candidates.slice();
+	if (detection.matchedTitle) {
+		logCatalogStep(
+			`Matched catalog title "${detection.matchedTitle}" (${formatCatalogScore(detection.matchScore)}).`
+		);
+	}
+	if (candidates.length > 0) {
+		logCatalogStep(`Candidates found: ${candidates.slice(0, 3).map((candidate) => formatCatalogCandidate(candidate)).join(' | ')}.`);
+	}
+	if (candidates.length === 0) {
+		logCatalogStep('Completed without path: No validated candidate save paths.');
+		for (const line of buildCatalogResultLogLines(detection.debug)) {
+			logCatalogStep(line);
+		}
+		emitProgress({
+			stage: 'completed',
+			percent: 100,
+			processed: 1,
+			total: 1,
+			message: 'No validated candidate save paths.',
+			matchedTitle: detection.matchedTitle,
+			resolvedPath: null,
+			debug: detection.debug ?? null,
+		});
+		return;
+	}
+
+	const best = candidates[0];
+	const second = candidates[1];
+	const isAmbiguous = detection.titleAmbiguous || Boolean(best && second && best.score - second.score <= 0.1);
+	if (isAmbiguous) {
+		logCatalogStep('Title/path selection is ambiguous. Waiting for user confirmation.');
+	}
+
+	if (best && !isAmbiguous && best.score >= 0.75) {
+		addSaveLocation(activeDb, game.id, best.path, true);
+		logEvent(
+			activeDb,
+			game.id,
+			'backup',
+			`Catalog save path auto-detected: ${best.path}${detection.matchedTitle ? ` (matched: ${detection.matchedTitle})` : ''}`,
+		);
+		logCatalogStep(`Auto-detected save path selected: ${best.path}.`);
+		emitProgress({
+			stage: 'completed',
+			percent: 100,
+			processed: candidates.length,
+			total: candidates.length,
+			message: 'Save path auto-detected.',
+			matchedTitle: detection.matchedTitle,
+			resolvedPath: best.path,
+			debug: detection.debug ?? null,
+		});
+		return;
+	}
+
+	emitProgress({
+		stage: 'progress',
+		percent: 96,
+		processed: candidates.length,
+		total: candidates.length,
+		message: 'Multiple candidates found. Waiting for confirmation...',
+		matchedTitle: detection.matchedTitle,
+		resolvedPath: null,
+		debug: detection.debug ?? null,
+	});
+	logCatalogStep('Multiple candidates found. Waiting for confirmation dialog.');
+
+	const chosen = await promptForCatalogPathChoice(
+		game.name,
+		candidates.map((candidate) => ({ path: candidate.path, score: candidate.score })),
+	);
+
+	if (!chosen) {
+		logCatalogStep('User skipped candidate confirmation. No save path added.');
+		emitProgress({
+			stage: 'completed',
+			percent: 100,
+			processed: candidates.length,
+			total: candidates.length,
+			message: 'Detection finished without a confirmed path.',
+			matchedTitle: detection.matchedTitle,
+			resolvedPath: null,
+			debug: detection.debug ?? null,
+		});
+		return;
+	}
+
+	addSaveLocation(activeDb, game.id, chosen, true);
+	logEvent(
+		activeDb,
+		game.id,
+		'backup',
+		`Catalog save path confirmed: ${chosen}${detection.matchedTitle ? ` (matched: ${detection.matchedTitle})` : ''}`,
+	);
+	logCatalogStep(`User-confirmed save path: ${chosen}.`);
+	emitProgress({
+		stage: 'completed',
+		percent: 100,
+		processed: candidates.length,
+		total: candidates.length,
+		message: 'Save path confirmed.',
+		matchedTitle: detection.matchedTitle,
+		resolvedPath: chosen,
+		debug: detection.debug ?? null,
+	});
 }
 
 function parseWindowsPathFromErrorMessage(message: string): string | null {
@@ -699,6 +1065,30 @@ function registerIpc(): void {
 		const payload = parseAddGamePayload(payloadValue);
 		const game = addGame(activeDb, payload, settings.storageRoot);
 		refreshWatcher(activeDb, settings);
+		void applyCatalogDetectionForGame(activeDb, game)
+			.then(() => {
+				refreshWatcher(activeDb, settings);
+			})
+			.catch((error) => {
+				emitCatalogDetectionProgress({
+					gameId: game.id,
+					gameName: game.name,
+					stage: 'failed',
+					percent: 100,
+					processed: 1,
+					total: 1,
+					message: getErrorMessage(error, 'Automatic save-path detection failed.'),
+					matchedTitle: null,
+					resolvedPath: null,
+					debug: null,
+				});
+				logEvent(
+					activeDb,
+					game.id,
+					'error',
+					`Catalog save-path detection failed: ${getErrorMessage(error, 'Unknown error')}`,
+				);
+			});
 		return game;
 	});
 	ipcMain.handle('games:remove', (_event, gameIdValue: unknown) => {

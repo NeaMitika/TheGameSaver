@@ -7,6 +7,7 @@ import AppHeader from './components/dashboard/AppHeader';
 import DashboardScreen from './components/dashboard/DashboardScreen';
 import { Button } from './components/ui/button';
 import { useBackupProgressToasts } from './hooks/useBackupProgressToasts';
+import { useCatalogDetectionToasts } from './hooks/useCatalogDetectionToasts';
 import { useDashboardActions } from './hooks/useDashboardActions';
 import { useDashboardOverview } from './hooks/useDashboardOverview';
 import { useToastNotifications } from './hooks/useToastNotifications';
@@ -26,6 +27,7 @@ export default function App() {
 
 	const { showNotice, showError } = useToastNotifications();
 	useBackupProgressToasts();
+	useCatalogDetectionToasts();
 	const { runningMap, overview } = useDashboardOverview(games);
 	const {
 		refreshGames,
@@ -93,6 +95,18 @@ export default function App() {
 				})
 				.catch(() => undefined);
 		});
+		const unsubscribeCatalogProgress = window.gamesaver.onCatalogDetectionProgress((payload) => {
+			if (payload.stage !== 'completed' && payload.stage !== 'failed') {
+				return;
+			}
+			void refreshGames();
+			void window.gamesaver
+				.getGame(payload.gameId)
+				.then((detail) => {
+					setSelectedDetail((prev) => (prev && prev.game.id === payload.gameId ? detail : prev));
+				})
+				.catch(() => undefined);
+		});
 
 		window.gamesaver.windowControls
 			.getLayoutMode()
@@ -107,6 +121,7 @@ export default function App() {
 			disposed = true;
 			unsubscribeStatus();
 			unsubscribeBackupCreated();
+			unsubscribeCatalogProgress();
 			unsubscribeRestart();
 		};
 	}, []);
