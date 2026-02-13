@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 type SettingsPanelProps = {
   settings: Settings;
@@ -104,18 +105,18 @@ export default function SettingsPanel({ settings, onCancel, onError, onSaved }: 
 
           <div className="grid gap-2">
             <Label htmlFor="language">{t('settings_language')}</Label>
-            <select
-              id="language"
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              value={language}
-              onChange={(event) => setLanguage(normalizeLanguageValue(event.target.value))}
-            >
-              {LANGUAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <Select value={language} onValueChange={(value) => setLanguage(normalizeLanguageValue(value))}>
+              <SelectTrigger id="language" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">{t('settings_language_help')}</p>
           </div>
 
